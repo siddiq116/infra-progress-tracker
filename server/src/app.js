@@ -2,7 +2,6 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 
-import { connectDB } from "./config/db.js";
 import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/users.js";
 import projectRoutes from "./routes/projects.js";
@@ -16,18 +15,6 @@ const app = express();
 
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || true }));
 app.use(express.json());
-
-// Serverless functions are stateless between cold starts, so every request
-// ensures the (cached) MongoDB connection is ready before it reaches a route.
-app.use(async (req, res, next) => {
-  try {
-    await connectDB();
-    next();
-  } catch (err) {
-    console.error("MongoDB connection failed", err);
-    res.status(500).json({ message: "Database connection failed" });
-  }
-});
 
 app.get("/api/health", (req, res) => res.json({ status: "ok", time: new Date().toISOString() }));
 

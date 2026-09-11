@@ -1,14 +1,18 @@
 import { Router } from "express";
-import User from "../models/User.js";
+import { query } from "../db/client.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 
 const router = Router();
 
 router.use(requireAuth);
 
+function mapUserRow(row) {
+  return { _id: row.id, name: row.name, email: row.email, role: row.role, createdAt: row.created_at };
+}
+
 router.get("/", async (req, res) => {
-  const users = await User.find().select("-password").sort({ name: 1 });
-  res.json({ users });
+  const { rows } = await query("SELECT id, name, email, role, created_at FROM users ORDER BY name ASC");
+  res.json({ users: rows.map(mapUserRow) });
 });
 
 router.patch("/:id/role", requireRole("admin"), async (req, res) => {
@@ -17,9 +21,13 @@ router.patch("/:id/role", requireRole("admin"), async (req, res) => {
   if (!allowedRoles.includes(role)) {
     return res.status(400).json({ message: "Invalid role" });
   }
-  const user = await User.findByIdAndUpdate(req.params.id, { role }, { new: true }).select("-password");
-  if (!user) return res.status(404).json({ message: "User not found" });
-  res.json({ user });
+
+  const { rows } = await query(
+    "UPDATE users SET role = $1 WHERE id = $2 RETURNING id, name, email, role, created_at",
+    [role, req.params.id]
+  );
+  if (!rows[0]) return res.status(404).json({ message: "User not found" });
+  res.json({ user: mapUserRow(rows[0]) });
 });
 
 export default router;

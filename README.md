@@ -5,9 +5,8 @@ Infrastructure Project Management**. It bridges planning and execution by lettin
 teams capture *actual* progress (with photo + GPS evidence) and automatically comparing it
 against the *planned* schedule, surfacing variance and delay alerts in real time.
 
-Built to deploy as a single Vercel project: a static React frontend plus an Express API
-running as a Vercel serverless function, backed by MongoDB Atlas and Vercel Blob for photo
-storage.
+Deployed as a single Vercel project: a static React frontend plus an Express API running as
+a Vercel serverless function, backed by Neon Postgres and Vercel Blob for photo storage.
 
 ## What it does
 
@@ -25,17 +24,19 @@ storage.
 
 ## Tech stack
 
-- **Backend:** Node.js, Express (as a Vercel serverless function), MongoDB (Mongoose), JWT
-  auth, Multer (in-memory) + Vercel Blob for photo uploads.
+- **Backend:** Node.js, Express (as a Vercel serverless function), Postgres via
+  [Neon](https://neon.tech) (`pg`, with a pooled connection cached across warm
+  invocations), JWT auth, Multer (in-memory) + Vercel Blob for photo uploads.
 - **Frontend:** React (Vite), React Router, Recharts, Tailwind CSS, Axios.
 
 ## Project structure
 
 ```
-api/index.js    Vercel serverless entry point — re-exports the Express app
-server/src/     Express app, MongoDB models, schedule-linking logic, routes
-client/         React + Vite single-page app
-vercel.json     Routes /api/* to the serverless function, builds client/dist
+api/index.js       Vercel serverless entry point — re-exports the Express app
+server/src/db/      Postgres schema, migration script, connection pool
+server/src/         Express app, routes, schedule-linking logic
+client/              React + Vite single-page app
+vercel.json         Routes /api/* to the serverless function, builds client/dist
 ```
 
 ## Deploying on Vercel
@@ -43,34 +44,36 @@ vercel.json     Routes /api/* to the serverless function, builds client/dist
 1. Push this repo to GitHub (already done if you're reading this from the repo).
 2. In the [Vercel dashboard](https://vercel.com/new), import the repo. `vercel.json` at the
    root configures the build automatically — no manual framework settings needed.
-3. In the project's **Storage** tab, add a **Blob** store. This automatically sets the
-   `BLOB_READ_WRITE_TOKEN` environment variable used by photo uploads.
-4. In **Settings → Environment Variables**, add:
-   - `MONGO_URI` — a [MongoDB Atlas](https://www.mongodb.com/atlas) connection string (Vercel
-     functions can't reach a local `mongod`)
-   - `JWT_SECRET` — any long random string
-   - `JWT_EXPIRES_IN` — e.g. `7d`
-5. Deploy. Then run the seed script once against the same `MONGO_URI` (see below) to create
-   demo accounts, or register a fresh admin account via `/register`.
+3. In the project's **Storage** tab: add a **Blob** store (sets `BLOB_READ_WRITE_TOKEN`
+   automatically) and connect/create a **Neon** Postgres database (sets `DATABASE_URL` and
+   `DATABASE_URL_UNPOOLED` automatically).
+4. In **Settings → Environment Variables**, add `JWT_SECRET` (any long random string) and
+   optionally `JWT_EXPIRES_IN` (defaults to `7d`).
+5. Run the schema migration once against the new database: `npm run migrate` locally with
+   `DATABASE_URL_UNPOOLED` pulled via `vercel env pull .env.local`. Then optionally
+   `npm run seed` for demo data, or just deploy and register a fresh admin account via
+   `/register`.
+6. Deploy (push to `main`, or `vercel --prod`).
 
 ## Local development
 
 ### Prerequisites
 
 - Node.js 18+
-- A MongoDB instance (local `mongod`, Docker, or MongoDB Atlas)
+- A Neon Postgres database (or any Postgres instance) — `vercel env pull .env.local` after
+  connecting Neon storage to the Vercel project is the fastest way to get credentials
 
 ### 1. Install & configure
 
 ```bash
-cp .env.example .env        # edit MONGO_URI / JWT_SECRET
-npm install                  # installs the API's dependencies (root package.json)
-npm run seed                 # creates demo users, 2 projects, and sample tasks/progress
+vercel env pull .env.local   # or: cp .env.example .env.local and fill in DATABASE_URL etc.
+npm install                    # installs the API's dependencies (root package.json)
+npm run migrate                # creates the schema (uses DATABASE_URL_UNPOOLED)
+npm run seed                   # creates demo users, 2 projects, and sample tasks/progress
 ```
 
-Photo uploads need `BLOB_READ_WRITE_TOKEN` in `.env` too — pull it from a Vercel project with
-Blob storage enabled via `vercel env pull .env.development.local`, or just skip photos locally
-(progress updates work fine without one; only the photo field needs the token).
+Photo uploads need `BLOB_READ_WRITE_TOKEN` too (included in `vercel env pull`), or just skip
+photos locally — progress updates work fine without one; only the photo field needs it.
 
 ### 2. Run the API
 
@@ -97,14 +100,19 @@ login page has one-click buttons to fill them in:
 
 ## Core data model
 
-- **Project** — planned start/end, location, status, manager.
-- **Task** (WBS item) — belongs to a project; planned start/end, weight (for weighted
-  roll-ups), assignee, dependencies, cached `actualProgress`/`status`.
-- **ProgressUpdate** — an immutable field-capture event: task, submitter, actual %, remarks,
-  photo URL (Vercel Blob), GPS geotag, timestamp. Each new update recomputes the parent
-  task's status and rolls up into the project's overall status.
+Schema: `server/src/db/schema.sql`.
 
-The planned-vs-actual math lives in `server/src/utils/progress.js`:
+- **users** — name, email, password hash, role.
+- **projects** — planned start/end, location, status, manager.
+- **tasks** (WBS item) — belongs to a project; planned start/end, weight (for weighted
+  roll-ups), assignee, dependencies (`depends_on` integer array), cached
+  `actual_progress`/`status`.
+- **progress_updates** — an immutable field-capture event: task, submitter, actual %,
+  remarks, photo URL (Vercel Blob), GPS geotag, timestamp. Each new update recomputes the
+  parent task's status and rolls up into the project's overall status.
+
+The planned-vs-actual math lives in `server/src/utils/progress.js` (pure functions, no DB
+dependency):
 
 - `plannedProgressAt` — linear interpolation of expected % complete between a task's planned
   start and end dates.

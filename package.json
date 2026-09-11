@@ -2,11 +2,12 @@
   "name": "infra-progress-tracker",
   "version": "1.0.0",
   "private": true,
-  "description": "SIH26122 Real-Time Infrastructure Progress Tracking — Express/MongoDB API deployed as Vercel serverless functions, paired with a React client.",
+  "description": "SIH26122 Real-Time Infrastructure Progress Tracking — Express/Postgres (Neon) API deployed as Vercel serverless functions, paired with a React client.",
   "type": "module",
   "scripts": {
     "dev:server": "nodemon server/src/index.js",
     "dev:client": "npm --prefix client run dev",
+    "migrate": "node server/src/db/migrate.js",
     "seed": "node server/src/seed.js",
     "install:client": "npm --prefix client install",
     "build:client": "npm --prefix client install && npm --prefix client run build"
@@ -18,8 +19,8 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.5.2",
-    "multer": "^2.0.1"
+    "multer": "^2.0.1",
+    "pg": "^8.13.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.4"

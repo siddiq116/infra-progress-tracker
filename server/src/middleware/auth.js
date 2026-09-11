@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import User from "../models/User.js";
+import { query } from "../db/client.js";
 
 export async function requireAuth(req, res, next) {
   try {
@@ -8,7 +8,8 @@ export async function requireAuth(req, res, next) {
     if (!token) return res.status(401).json({ message: "Not authenticated" });
 
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(payload.id);
+    const { rows } = await query("SELECT id, name, email, role, created_at FROM users WHERE id = $1", [payload.id]);
+    const user = rows[0];
     if (!user) return res.status(401).json({ message: "User no longer exists" });
 
     req.user = user;
