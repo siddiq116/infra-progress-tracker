@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { put } from "@vercel/blob";
 import Task from "../models/Task.js";
 import ProgressUpdate from "../models/ProgressUpdate.js";
 import Project from "../models/Project.js";
@@ -38,13 +39,25 @@ router.post("/", upload.single("photo"), async (req, res) => {
 
     const progressValue = Math.max(0, Math.min(100, Number(actualProgress)));
 
+    let photoUrl = null;
+    if (req.file) {
+      if (!process.env.BLOB_READ_WRITE_TOKEN) {
+        return res.status(500).json({ message: "Photo storage is not configured (missing BLOB_READ_WRITE_TOKEN)" });
+      }
+      const blob = await put(`progress/${task._id}-${Date.now()}-${req.file.originalname}`, req.file.buffer, {
+        access: "public",
+        contentType: req.file.mimetype,
+      });
+      photoUrl = blob.url;
+    }
+
     const update = await ProgressUpdate.create({
       task: task._id,
       project: task.project,
       submittedBy: req.user._id,
       actualProgress: progressValue,
       remarks: remarks || "",
-      photoUrl: req.file ? `/uploads/${req.file.filename}` : null,
+      photoUrl,
       geotag: {
         lat: lat ? Number(lat) : null,
         lng: lng ? Number(lng) : null,

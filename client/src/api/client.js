@@ -1,6 +1,10 @@
 import axios from "axios";
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+// Empty string = same-origin requests, which is correct once the client and
+// the /api serverless functions are deployed together on one Vercel project.
+// Set VITE_API_URL only when running the client against a separate backend
+// (e.g. two local dev servers on different ports).
+export const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
 const api = axios.create({ baseURL: `${API_BASE_URL}/api` });
 
@@ -26,6 +30,7 @@ api.interceptors.response.use(
 
 export function fileUrl(path) {
   if (!path) return null;
+  if (/^https?:\/\//.test(path)) return path; // Vercel Blob URLs are already absolute
   return `${API_BASE_URL}${path}`;
 }
 
